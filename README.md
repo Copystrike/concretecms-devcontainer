@@ -4,9 +4,13 @@
 
 I honestly do not like composer and everything php 😅, so to avoid having any php on my machine I decided to create a devcontainer that automatically installs all of its dependencies like composer, nginx etc for concretecms and sets it up. To even have a better and faster expirience I even left in the build script that clones, setups concretecms, creates a linux user etc. This script should only run once inside the container so to prevent a second build I have created a lockfile mechanisme. Simpely delete the `.devcontainer/prevent-install-concretecms.lock` and the buildscript will be executed when entering the devcontainer.
 
-## WSL
+## Devcontainer in WSL
 
 I really recommend using WSL for this application otherwise concretecms will be really slow. I have tested it on WSL2 and it works like a charm.
+
+Here is more information on how to do it: [Store your source code in the WSL 2 filesystem on Windows](https://code.visualstudio.com/remote/advancedcontainers/improve-performance#_store-your-source-code-in-the-wsl-2-filesystem-on-windows)
+
+And from there you have to create & build your devcontainer.
 
 ## How to use
 
