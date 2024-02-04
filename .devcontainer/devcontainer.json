@@ -7,7 +7,8 @@
 		"ghcr.io/devcontainers-contrib/features/composer:1": {}
 	},
 	"workspaceFolder": "/app",
-	"postCreateCommand": "sudo bash ./.devcontainer/build",
+	// PHP-FPM 8.3 doens't exist and I have no idea what it is so we stick to 8.2!
+	"postCreateCommand": "switch-php 8.2 && sudo bash ./.devcontainer/build",
 	"mounts": [
 		"source=${localWorkspaceFolder},target=/app,type=bind,consistency=cached"
 	]
