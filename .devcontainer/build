@@ -1,0 +1,114 @@
+#!/bin/sh
+
+# Set the base directory
+BASE_DIR=/app
+CMS_DIR=${BASE_DIR}/cms
+
+mkdir -p $CMS_DIR
+
+SCRIPT=$(readlink -f "$0")
+SCRIPTPATH=$(dirname "$SCRIPT")
+LOCKFILE=./.devcontainer/prevent-install-concretecms.lock
+
+if [ -e ${LOCKFILE} ]; then
+    echo "Already ran"
+    exit
+fi
+
+set -o errexit
+set -o nounset
+
+# Define variables
+USER_UID=1000
+USER_GID=$USER_UID
+USERNAME="www-data"
+
+# Modify group and user
+groupmod --gid $USER_GID $USERNAME
+usermod --uid $USER_UID --gid $USER_GID $USERNAME
+
+# Change ownership recursively
+sudo chown -R $USER_UID:$USER_GID $BASE_DIR
+
+printTitle() {
+    printTitle_length=${#1}
+    printf "\n##%${printTitle_length}s##\n" ' ' | tr ' ' '#'
+    printf '# %s #\n' "$1"
+    printf "##%${printTitle_length}s##\n" ' ' | tr ' ' '#'
+}
+
+printTitle 'Configuring environment'
+printf '(PHP version: %s, Composer version: %s)\n' "$CCM_PHP_VERSION" "$CCM_COMPOSER_VERSION"
+switch-php "$CCM_PHP_VERSION"
+switch-composer "$CCM_COMPOSER_VERSION"
+
+cd $CMS_DIR
+ccm-service start db
+
+printTitle 'Downloading and extracting ConcreteCMS'
+printf '(URL: %s)\n' "$CCM_C5_ARCHIVE"
+
+if test "$CCM_C5_ARCHIVE" != "${CCM_C5_ARCHIVE#https://github.com/}" || test "$CCM_C5_ARCHIVE" != "${CCM_C5_ARCHIVE#https://codeload.github.com/}"; then
+    curl -sSL "$CCM_C5_ARCHIVE" | sudo -u www-data -- tar xz --strip 1
+else
+    curl -sSL -o /tmp/c5.zip "$CCM_C5_ARCHIVE"
+    sudo -u www-data -- mkdir /tmp/c5
+    sudo -u www-data -- unzip -q /tmp/c5.zip -d /tmp/c5
+    mv /tmp/c5/*/** $CMS_DIR
+    rm -rf /tmp/c5.zip /tmp/c5
+    chmod +x $CMS_DIR/concrete/bin/concrete5
+fi
+
+if ! test -d $CMS_DIR/concrete/vendor; then
+    printTitle 'Installing composer dependencies'
+    if test -f $CMS_DIR/concrete/composer.json; then
+        sed -i 's/"hautelook\/phpass"/"ozh\/phpass"/' $CMS_DIR/concrete/composer.json
+    fi
+    if test -f $CMS_DIR/composer.lock; then
+        sed -i 's_\bhautelook/phpass\b_ozh/phpass_' $CMS_DIR/composer.lock
+    fi
+    sudo -H -u www-data -- composer install --optimize-autoloader --no-cache
+fi
+
+if [ "${CCM_PATCH_ENVIRONMENT_ONLY:-}" = Y ]; then
+    printTitle 'Patching Concrete for C5_ENVIRONMENT_ONLY support'
+    sed -Ei 's/^return \$app;//' $CMS_DIR/application/bootstrap/start.php
+    cat /tmp/start-patch >>$CMS_DIR/application/bootstrap/start.php
+    cat /tmp/app-patch >>$CMS_DIR/application/bootstrap/app.php
+fi
+rm -f /tmp/start-patch /tmp/app-patch
+
+printTitle 'Configuring PHPUnit'
+printf '(PHPUnit version: %s)\n' "$CCM_PHPUNIT_VERSION"
+if [ -f $CMS_DIR/concrete/vendor/phpunit/phpunit/phpunit ]; then
+    update-alternatives --quiet --install /usr/local/bin/phpunit phpunit $CMS_DIR/concrete/vendor/phpunit/phpunit/phpunit 9999
+fi
+switch-phpunit "$CCM_PHPUNIT_VERSION"
+
+printTitle 'Installing Concrete'
+c5 c5:install \
+    --db-server=localhost \
+    --db-username=c5 \
+    --db-password=12345 \
+    --db-database=c5 \
+    --site='ConcreteCMS website' \
+    --starting-point=$CCM_STARTING_POINT \
+    --admin-email=admin@example.org \
+    --admin-password=12345 \
+
+sudo -u www-data -- mkdir --mode=0755 -p $CMS_DIR/application/languages/site
+
+c5 c5:config set -g concrete.seo.url_rewriting true
+c5 c5:config set -g concrete.mail.method smtp
+c5 c5:config set -g concrete.mail.methods.smtp.server 127.0.0.1
+c5 c5:config set -g concrete.mail.methods.smtp.port 25
+
+printTitle 'Final operations'
+c5 c5:clear-cache
+ccm-service stop db
+
+printTitle 'Ready. Creating lockfile...'
+
+cd /app
+
+touch ${LOCKFILE}

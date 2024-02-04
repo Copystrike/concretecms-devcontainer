@@ -1,0 +1,14 @@
+{
+	"name": "PHP",
+	"build": {
+		"dockerfile": "Dockerfile"
+	},
+	"features": {
+		"ghcr.io/devcontainers-contrib/features/composer:1": {}
+	},
+	"workspaceFolder": "/app",
+	"postCreateCommand": "sudo bash ./.devcontainer/build",
+	"mounts": [
+		"source=${localWorkspaceFolder},target=/app,type=bind,consistency=cached"
+	]
+}
